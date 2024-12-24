@@ -7,7 +7,13 @@
 * Special attention to echo's -ne for XML encoding
 ## URL #url
 
-`url=$(echo -n $payload | jq -Rr '@uri')
+```
+url=$(echo -n $payload | jq -Rr '@uri')
+
+echo "urlencoded" | sed 's/%/\\x/g' | xargs -I{} printf '%b' {}
+
+function urldecode() { : "${*//+/ }"; echo -e "${_//%/\\x}"; }
+```
 
 # HTTP 
 
