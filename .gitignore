@@ -2,3 +2,8 @@
 Interview
 Challenges
 CTF
+
+# Keep automation files
+!.github/
+!scripts/
+!docs/

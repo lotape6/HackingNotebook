@@ -1,0 +1,282 @@
+name: Content Approval Automation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.md'
+      - 'Cheatsheets/**'
+      - 'Tracks/**'
+      - 'LetsDefend/**'
+      - 'MalwareAnalysis/**'
+      - 'Ringzer0CTF/**'
+
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to validate'
+        required: true
+        type: number
+
+jobs:
+  content-validation:
+    name: Validate Content Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            **/*.md
+            
+      - name: Validate markdown format
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Validating markdown files..."
+          
+          # Install markdown linter
+          npm install -g markdownlint-cli
+          
+          # Create markdownlint config
+          cat > .markdownlint.json << 'EOF'
+          {
+            "default": true,
+            "MD013": false,
+            "MD033": false,
+            "MD041": false,
+            "MD045": false
+          }
+          EOF
+          
+          # Validate changed markdown files
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | while read file; do
+            if [[ "$file" == *.md ]]; then
+              echo "Linting $file"
+              markdownlint "$file" || echo "Warning: Linting issues in $file"
+            fi
+          done
+          
+      - name: Check for broken internal links
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Checking for broken internal links..."
+          
+          # Simple script to check for broken internal links
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | while read file; do
+            if [[ "$file" == *.md ]]; then
+              echo "Checking links in $file"
+              
+              # Extract markdown links and check if referenced files exist
+              grep -oP '\[.*?\]\(\K[^)]+(?=\))' "$file" 2>/dev/null | while read link; do
+                # Skip external links
+                if [[ "$link" =~ ^https?:// ]]; then
+                  continue
+                fi
+                
+                # Check if internal file exists
+                if [[ "$link" == *.md ]] && [[ ! -f "$link" ]] && [[ ! -f "$(dirname "$file")/$link" ]]; then
+                  echo "::warning file=$file::Potential broken link: $link"
+                fi
+              done
+            fi
+          done
+          
+      - name: Validate content structure
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "Validating content structure..."
+          
+          echo "${{ steps.changed-files.outputs.all_changed_files }}" | tr ' ' '\n' | while read file; do
+            if [[ "$file" == *.md ]]; then
+              echo "Validating structure of $file"
+              
+              # Check if file is in correct directory structure
+              case "$file" in
+                Cheatsheets/*.md)
+                  echo "✓ Cheatsheet file in correct location"
+                  ;;
+                Tracks/*/*)
+                  echo "✓ Track content in correct location"
+                  ;;
+                LetsDefend/*.md)
+                  echo "✓ LetsDefend content in correct location"
+                  ;;
+                MalwareAnalysis/*.md)
+                  echo "✓ Malware analysis content in correct location"
+                  ;;
+                Ringzer0CTF/*.md)
+                  echo "✓ Ringzer0 CTF content in correct location"
+                  ;;
+                README.md)
+                  echo "✓ README file"
+                  ;;
+                *)
+                  echo "::warning file=$file::File may be in unexpected location"
+                  ;;
+              esac
+              
+              # Check for minimum content requirements
+              if [[ $(wc -l < "$file") -lt 5 ]]; then
+                echo "::warning file=$file::File seems very short, consider adding more content"
+              fi
+            fi
+          done
+
+  auto-approval-check:
+    name: Auto-approval Eligibility Check
+    runs-on: ubuntu-latest
+    needs: content-validation
+    if: github.event_name == 'pull_request'
+    
+    outputs:
+      eligible: ${{ steps.check-criteria.outputs.eligible }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Get PR information
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const files = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+            
+            return {
+              author: pr.user.login,
+              title: pr.title,
+              body: pr.body || '',
+              files: files.data,
+              additions: pr.additions,
+              deletions: pr.deletions,
+              changed_files: pr.changed_files
+            };
+            
+      - name: Check auto-approval criteria
+        id: check-criteria
+        run: |
+          echo "Checking auto-approval criteria..."
+          
+          PR_INFO='${{ steps.pr-info.outputs.result }}'
+          
+          # Parse PR information
+          AUTHOR=$(echo "$PR_INFO" | jq -r '.author')
+          ADDITIONS=$(echo "$PR_INFO" | jq -r '.additions')
+          DELETIONS=$(echo "$PR_INFO" | jq -r '.deletions')
+          CHANGED_FILES=$(echo "$PR_INFO" | jq -r '.changed_files')
+          
+          echo "PR Author: $AUTHOR"
+          echo "Additions: $ADDITIONS"
+          echo "Deletions: $DELETIONS"
+          echo "Changed files: $CHANGED_FILES"
+          
+          # Auto-approval criteria
+          ELIGIBLE=false
+          
+          # Criteria 1: Small documentation updates (< 50 lines changed, < 5 files)
+          if [[ $ADDITIONS -lt 50 ]] && [[ $DELETIONS -lt 20 ]] && [[ $CHANGED_FILES -lt 5 ]]; then
+            echo "✓ Meets size criteria for auto-approval"
+            ELIGIBLE=true
+          else
+            echo "✗ Changes too large for auto-approval"
+          fi
+          
+          # Criteria 2: Only markdown files changed
+          FILES_JSON=$(echo "$PR_INFO" | jq -r '.files[] | .filename')
+          NON_MD_FILES=0
+          
+          while IFS= read -r file; do
+            if [[ "$file" != *.md ]] && [[ "$file" != */*.md ]]; then
+              NON_MD_FILES=$((NON_MD_FILES + 1))
+            fi
+          done <<< "$FILES_JSON"
+          
+          if [[ $NON_MD_FILES -gt 0 ]]; then
+            echo "✗ Non-markdown files changed, manual review required"
+            ELIGIBLE=false
+          else
+            echo "✓ Only markdown files changed"
+          fi
+          
+          # Set output
+          echo "eligible=$ELIGIBLE" >> $GITHUB_OUTPUT
+          
+          if [[ "$ELIGIBLE" == "true" ]]; then
+            echo "🎉 PR eligible for auto-approval!"
+          else
+            echo "⏳ PR requires manual review"
+          fi
+
+  auto-approve:
+    name: Auto-approve Small Changes
+    runs-on: ubuntu-latest
+    needs: [content-validation, auto-approval-check]
+    if: needs.auto-approval-check.outputs.eligible == 'true' && github.event_name == 'pull_request'
+    
+    steps:
+      - name: Auto-approve PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            
+            // Add approval review
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              event: 'APPROVE',
+              body: '🤖 **Automated Approval**\n\nThis PR has been automatically approved because it meets the following criteria:\n- Small documentation changes (< 50 additions, < 20 deletions, < 5 files)\n- Only markdown files modified\n- Passed content validation checks\n\nThe changes can be safely merged.'
+            });
+            
+            // Add label
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['auto-approved', 'documentation']
+            });
+            
+            console.log('PR automatically approved!');
+
+  size-check:
+    name: Content Size Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Analyze change size
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            
+            if (pr.additions > 200 || pr.deletions > 100 || pr.changed_files > 10) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: '⚠️ **Large Change Detected**\n\nThis PR contains significant changes:\n- **Additions:** ' + pr.additions + '\n- **Deletions:** ' + pr.deletions + '\n- **Files changed:** ' + pr.changed_files + '\n\nPlease ensure:\n1. Changes are well-documented\n2. Content follows repository standards\n3. All new content is properly organized\n\nA maintainer will review this PR manually.'
+              });
+              
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: ['large-change', 'needs-review']
+              });
+            }

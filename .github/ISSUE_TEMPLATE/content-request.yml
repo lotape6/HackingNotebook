@@ -1,0 +1,57 @@
+name: Content Contribution Request
+description: Request to add new content to the HackingNotebook
+title: "[Content] "
+labels: ["content-request", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing to the HackingNotebook! Please provide details about the content you'd like to add.
+        
+  - type: dropdown
+    id: content-type
+    attributes:
+      label: Content Type
+      description: What type of content are you adding?
+      options:
+        - Cheatsheet
+        - Track Writeup
+        - LetsDefend Challenge
+        - Malware Analysis
+        - CTF Solution
+        - Other
+    validations:
+      required: true
+      
+  - type: input
+    id: content-title
+    attributes:
+      label: Content Title
+      description: Brief title for your content
+      placeholder: "e.g., SQL Injection Techniques, HTB Active Directory Track"
+    validations:
+      required: true
+      
+  - type: textarea
+    id: content-description
+    attributes:
+      label: Description
+      description: Describe what this content covers
+      placeholder: "Brief description of techniques, tools, or concepts covered"
+    validations:
+      required: true
+      
+  - type: checkboxes
+    id: content-checklist
+    attributes:
+      label: Content Guidelines
+      description: Please confirm you've followed our content guidelines
+      options:
+        - label: Content is original or properly attributed
+          required: true
+        - label: No sensitive information (passwords, tokens, etc.) is included
+          required: true
+        - label: Content follows markdown formatting standards
+          required: true
+        - label: Content is placed in the appropriate directory
+          required: true

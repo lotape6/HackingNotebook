@@ -1,0 +1,66 @@
+# Validation Configuration for HackingNotebook
+# This file defines the validation rules for content approval automation
+
+# Auto-approval thresholds
+auto_approval:
+  max_additions: 50
+  max_deletions: 20
+  max_files: 5
+  
+# Large change thresholds (triggers manual review warning)
+large_change:
+  max_additions: 200
+  max_deletions: 100
+  max_files: 10
+
+# Content validation rules
+validation:
+  require_headers: true
+  check_code_blocks: true
+  check_internal_links: true
+  min_file_length: 3
+
+# Directory structure
+directories:
+  allowed:
+    - "Cheatsheets/"
+    - "Tracks/"
+    - "LetsDefend/"
+    - "MalwareAnalysis/"
+    - "Ringzer0CTF/"
+    - "docs/"
+    - "scripts/"
+    - ".github/"
+  
+  track_subdirs:
+    - "crest_crt"
+    - "Intro_to_blue_team"
+
+# File extensions
+allowed_extensions:
+  auto_approve:
+    - ".md"
+  manual_review:
+    - ".sh"
+    - ".yml"
+    - ".yaml"
+    - ".json"
+
+# Labels applied by automation
+labels:
+  auto_approved: "auto-approved"
+  documentation: "documentation"
+  large_change: "large-change"
+  needs_review: "needs-review"
+  validation_failed: "validation-failed"
+
+# Validation warnings vs errors
+validation_levels:
+  warnings:
+    - "short_file"
+    - "no_headers"
+    - "unexpected_location"
+  errors:
+    - "unmatched_code_blocks"
+    - "broken_internal_links"
+    - "invalid_structure"
